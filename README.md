@@ -14,6 +14,8 @@ Each persona is a Claude Code [output style](https://code.claude.com/docs/en/out
 
 `index.ts` copies the chosen persona to `output-styles/active.md` with `force-for-plugin: true` added, so Claude Code applies it to every session the plugin is loaded in, without anyone typing `/output-style`, and removes it for None. `output-styles/` is written by the extension and ignored by git.
 
+`research/` holds the source notes each persona was written from: speech patterns, canon checks and short attributed quotes. It is not loaded into any session.
+
 ## What a persona changes
 
 Only how Claude talks to you. Each style keeps Claude Code's coding instructions (`keep-coding-instructions: true`) and keeps the voice out of everything written for someone else or that outlives the conversation: commits, pull requests, code and comments, sub-agent briefs, and drafts in Gmail, Outlook, ODI support, LinkedIn, WhatsApp, Messenger and Instagram. Sub-agents run their own system prompt, so they never take on the persona.
