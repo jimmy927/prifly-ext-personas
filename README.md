@@ -1,10 +1,10 @@
 # prifly-ext-personas
 
-A voice for the Claude you talk to in prifly, so the day is less dull: Skippy the Magnificent or Spock.
+A voice for the Claude you talk to in prifly, so the day is less dull: Skippy the Magnificent, Spock, Duke Nukem, Bender, Captain Jack Sparrow, Deadpool, the Cat from Red Dwarf, Zapp Brannigan or Claptrap.
 
 ## Choosing one
 
-In prifly's Extensions dialog, open Personas and pick under **Persona**: None, Skippy or Spock. New sessions talk in it from their first message; **Apply to idle sessions** hands it to the ones already running, and a busy one gets it at its next start. None talks plainly again.
+In prifly's Extensions dialog, open Personas and pick under **Persona**: None or one of the personas. New sessions talk in it from their first message; **Apply to idle sessions** hands it to the ones already running, and a busy one gets it at its next start. None talks plainly again.
 
 The dropdown needs a prifly with the `select` setting type; an older prifly leaves the setting out, and nothing is applied.
 
@@ -34,4 +34,6 @@ Only how Claude talks to you. Each style keeps Claude Code's coding instructions
 
 2. Add `<Name>` to `PERSONAS` in `persona.ts` and to the setting's `options` in `prifly-extension.json`, spelled the same as the file name with a capital first letter.
 
-`bun test` checks that a choice writes the style and None removes it.
+3. Put the notes it was written from in `research/<name>.md`.
+
+`bun test` checks that a choice writes the style and None removes it, and that every persona has its file, its dropdown option and the "Where the voice stops" section word for word.

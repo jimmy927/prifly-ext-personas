@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { cp, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyPersona, chosenPersona, forcedStyle } from "../persona";
+import { PERSONAS, applyPersona, chosenPersona, forcedStyle } from "../persona";
 
 const repo = join(import.meta.dir, "..");
 
@@ -36,4 +36,17 @@ test("choosing a persona writes it as active.md, and None removes it", async () 
 
   expect(await applyPersona(folder, "None")).toBeNull();
   expect(await active.exists()).toBe(false);
+});
+
+test("every offered persona is in the dropdown and has a file that keeps the voice to the user", async () => {
+  const manifest = await Bun.file(join(repo, "prifly-extension.json")).json();
+  const options = manifest.settings.find((s: { id: string }) => s.id === "persona").options;
+  expect(options).toEqual(["None", ...PERSONAS]);
+  const boundary = (await Bun.file(join(repo, "personas", "skippy.md")).text()).split("## Where the voice stops")[1];
+  for (const persona of PERSONAS) {
+    const text = await Bun.file(join(repo, "personas", `${persona.toLowerCase()}.md`)).text();
+    expect(text).toContain(`name: ${persona}\n`);
+    expect(text).toContain("keep-coding-instructions: true");
+    expect(text.split("## Where the voice stops")[1]).toBe(boundary);
+  }
 });

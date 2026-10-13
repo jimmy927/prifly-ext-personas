@@ -11,7 +11,17 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 /** The dropdown's options, as the manifest lists them; "None" is no persona. */
-export const PERSONAS = ["Skippy", "Spock"] as const;
+export const PERSONAS = [
+  "Skippy",
+  "Spock",
+  "Duke",
+  "Bender",
+  "Sparrow",
+  "Deadpool",
+  "Cat",
+  "Zapp",
+  "Claptrap",
+] as const;
 
 /** The persona a setting names, or null for "None" and anything not offered. */
 export function chosenPersona(value: unknown): (typeof PERSONAS)[number] | null {
