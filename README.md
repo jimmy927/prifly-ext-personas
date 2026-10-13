@@ -37,3 +37,9 @@ Only how Claude talks to you. Each style keeps Claude Code's coding instructions
 3. Put the notes it was written from in `research/<name>.md`.
 
 `bun test` checks that a choice writes the style and None removes it, and that every persona has its file, its dropdown option and the "Where the voice stops" section word for word.
+
+## License and contributing
+
+Source-available under the Functional Source License 1.1 with an Apache 2.0 future license (`LICENSE.md`): use it, change it and fix it freely, but not to offer a competing product. Each version becomes Apache 2.0 two years after its release.
+
+Pull requests are welcome. Before one can be merged, its author signs the contributor agreement (`CLA.md`), which assigns the copyright in the contribution to The Startup Factory AB; the CLA bot asks for it on the pull request.
