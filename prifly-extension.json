@@ -1,0 +1,6 @@
+{
+  "id": "personas",
+  "name": "Personas",
+  "description": "A voice to talk to you in, so the day is less dull: Skippy the Magnificent or Spock. Each is a Claude Code output style; switch a session with /output-style personas:Skippy, personas:Spock, or default to turn it off.",
+  "version": "0.1.0"
+}

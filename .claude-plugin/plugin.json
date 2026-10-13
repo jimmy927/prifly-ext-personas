@@ -1,0 +1,7 @@
+{
+  "name": "personas",
+  "description": "Personas for the voice Claude talks to you in: Skippy the Magnificent and Spock, as output styles switched with /output-style.",
+  "version": "0.1.0",
+  "author": { "name": "Jimmy Engelbrecht" },
+  "homepage": "https://github.com/jimmy927/prifly-ext-personas"
+}
