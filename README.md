@@ -2,17 +2,17 @@
 
 A voice for the Claude you talk to in prifly, so the day is less dull: Skippy the Magnificent or Spock.
 
-Each persona is a Claude Code [output style](https://code.claude.com/docs/en/output-styles) in `output-styles/`. The folder is also a Claude Code plugin (`.claude-plugin/plugin.json`, named `personas`), and prifly passes an enabled extension's plugin to every local session with `--plugin-dir`, so the styles are there in every session.
+## Choosing one
 
-## Switching
+In prifly's Extensions dialog, open Personas and pick under **Persona**: None, Skippy or Spock. New sessions talk in it from their first message; **Apply to idle sessions** hands it to the ones already running, and a busy one gets it at its next start. None talks plainly again.
 
-In a session, type:
+The dropdown needs a prifly with the `select` setting type; an older prifly leaves the setting out, and nothing is applied.
 
-- `/output-style personas:Skippy`
-- `/output-style personas:Spock`
-- `/output-style default` to turn it off
+## How it works
 
-`/output-style` with no argument lists them. The new voice starts with the next message. Claude Code saves the choice in the project's `.claude/settings.local.json`, so it holds for every later session in that project until you switch again.
+Each persona is a Claude Code [output style](https://code.claude.com/docs/en/output-styles), kept in `personas/`. The folder is also a Claude Code plugin (`.claude-plugin/plugin.json`, named `personas`), which prifly passes to every local session with `--plugin-dir` while the extension is on.
+
+`index.ts` copies the chosen persona to `output-styles/active.md` with `force-for-plugin: true` added, so Claude Code applies it to every session the plugin is loaded in, without anyone typing `/output-style`, and removes it for None. `output-styles/` is written by the extension and ignored by git.
 
 ## What a persona changes
 
@@ -20,14 +20,16 @@ Only how Claude talks to you. Each style keeps Claude Code's coding instructions
 
 ## Adding a persona
 
-Add `output-styles/<name>.md` with this front matter, and copy the "Where the voice stops" section from `skippy.md` word for word:
+1. Add `personas/<name>.md` with this front matter, and copy the "Where the voice stops" section from `skippy.md` word for word:
 
-```markdown
----
-name: <Name>
-description: <one line>
-keep-coding-instructions: true
----
-```
+   ```markdown
+   ---
+   name: <Name>
+   description: <one line>
+   keep-coding-instructions: true
+   ---
+   ```
 
-Every `.md` in `output-styles/` becomes a style, so keep nothing else there.
+2. Add `<Name>` to `PERSONAS` in `persona.ts` and to the setting's `options` in `prifly-extension.json`, spelled the same as the file name with a capital first letter.
+
+`bun test` checks that a choice writes the style and None removes it.
