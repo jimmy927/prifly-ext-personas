@@ -16,6 +16,17 @@ Each persona is a Claude Code [output style](https://code.claude.com/docs/en/out
 
 `research/` holds the source notes each persona was written from: speech patterns, canon checks and short attributed quotes. It is not loaded into any session.
 
+## The Skippy bundle: talk and voice
+
+Skippy is not only a style sheet. When the dropdown picks **Skippy**, the plugin:
+
+1. makes sure the trained voice — skippy_zh-e15, built from the reader's own book audio and approved by ear — is listening at `127.0.0.1:8911`, starting it from `SKIPPY_HOME` if it is not;
+2. points prifly's read-aloud at it through the platform's `setSpeechBackend` hook (needs prifly on or after `e1186aca`; older priflys silently keep the default engine, since the plugin feature-guards the call).
+
+The same hook returns the slot to the default edge-tts engine the moment the choice becomes another persona, **None**, or the extension is unloaded — because the slot belongs to this extension and the platform resets it on deactivate. No env var, no config file, no restart.
+
+The private assets stay private in the training checkout (`skippy-voice.worktrees/pipeline-scaffold`: model weights 2.6 GB, voice checkpoints, and the training clips); only the glue ships in this repository — `voice/serve.py` (the FastAPI wrapper) and `voice/skippy-voice.ts` (health check plus spawn-on-demand). Set `SKIPPY_HOME` to point the voice at another training checkout. A machine without that checkout and `.venv-serve` installed answers `missing-env`, read-aloud stays on the default engine, nothing else affected.
+
 ## What a persona changes
 
 Only how Claude talks to you. Each style keeps Claude Code's coding instructions (`keep-coding-instructions: true`) and keeps the voice out of everything written for someone else or that outlives the conversation: commits, pull requests, code and comments, sub-agent briefs, and drafts in Gmail, Outlook, ODI support, LinkedIn, WhatsApp, Messenger and Instagram. Sub-agents run their own system prompt, so they never take on the persona.
