@@ -6,7 +6,7 @@
  */
 
 import { applyPersona, chosenPersona } from "./persona";
-import { ensureSkippyVoice } from "./voice/skippy-voice";
+import { ensureSkippyVoice, voiceHealthy } from "./voice/skippy-voice";
 
 /** The part of prifly's `ExtensionApi` this uses (`@prifly/extension-api`). */
 type Api = {
@@ -16,7 +16,21 @@ type Api = {
   log(event: string, fields?: Record<string, string | number | boolean | null>): void;
   /** prifly master after extension-speech-hook (e1186aca): feature "speech-backend". */
   setSpeechBackend?(url: string | null): void;
+  /** One line in Settings → Extensions in place of the description: feature "status". */
+  status?(text: string): void;
 };
+
+/** What the Extensions dialog says about the voice once `ensureSkippyVoice` answered. */
+export function voiceStatusText(voice: "alive" | "started" | "missing-env"): string {
+  switch (voice) {
+    case "alive":
+      return "Skippy voice: running";
+    case "started":
+      return "Skippy voice: starting — the first read-aloud takes ~40 s";
+    case "missing-env":
+      return "Skippy voice: not installed (no model under SKIPPY_HOME) — read-aloud stays default";
+  }
+}
 
 async function apply(api: Api, value: unknown): Promise<void> {
   const persona = await applyPersona(api.folder, value);
@@ -26,9 +40,20 @@ async function apply(api: Api, value: unknown): Promise<void> {
     api.log("skippy-voice", { voice });
     // Owner-slot by the platform hook: this extension's deactivate releases it.
     api.setSpeechBackend?.(voice === "missing-env" ? null : "http://127.0.0.1:8911");
+    api.status?.(voiceStatusText(voice));
+    if (voice === "started") {
+      // One follow-up probe once the model has had its ~40 s to load, so the
+      // status line lands on running/failed — no recurring watcher.
+      setTimeout(() => {
+        void voiceHealthy().then((up) => {
+          api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
+        });
+      }, 60_000);
+    }
   } else {
     // Any other persona, or None: return speech to the default engine.
     api.setSpeechBackend?.(null);
+    api.status?.("");
   }
 }
 

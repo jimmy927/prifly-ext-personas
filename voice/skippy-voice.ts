@@ -15,7 +15,8 @@ export function skippyHome(): string {
   return process.env.SKIPPY_HOME ?? join(process.env.HOME ?? "/home/jimmy", "src/skippy-voice.worktrees/pipeline-scaffold");
 }
 
-async function healthy(): Promise<boolean> {
+/** One probe of the voice server, for the status line as much as for ensure. */
+export async function voiceHealthy(): Promise<boolean> {
   try {
     const response = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(3_000) });
     return response.ok;
@@ -45,7 +46,7 @@ export function ensureVoiceServe(): Promise<"alive" | "started" | "missing-env" 
 }
 
 export async function ensureSkippyVoice(): Promise<"alive" | "started" | "missing-env"> {
-  if (await healthy()) return "alive";
+  if (await voiceHealthy()) return "alive";
   const venv = join(skippyHome(), ".venv-serve", "bin", "python");
   const checkpoints = join(skippyHome(), "checkpoints-zh", "skippy_zh-e15.ckpt");
   if (!existsSync(venv) || !existsSync(checkpoints)) return "missing-env";

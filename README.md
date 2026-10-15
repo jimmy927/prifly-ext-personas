@@ -25,6 +25,8 @@ Skippy is not only a style sheet. When the dropdown picks **Skippy**, the plugin
 
 The same hook returns the slot to the default edge-tts engine the moment the choice becomes another persona, **None**, or the extension is unloaded — because the slot belongs to this extension and the platform resets it on deactivate. No env var, no config file, no restart.
 
+While Skippy is picked, the extension's row in Settings → Extensions shows the voice server instead of the description: `Skippy voice: running`, `starting` (the first read-aloud takes ~40 s, checked once more a minute later), or `not installed`. Reloading or re-applying the extension re-probes the server and starts it again when it died — there is no background watcher; the status line reflects the last probe.
+
 The private assets stay private in the training checkout (`skippy-voice.worktrees/pipeline-scaffold`: model weights 2.6 GB, voice checkpoints, and the training clips); only the glue ships in this repository — `voice/serve.py` (the FastAPI wrapper) and `voice/skippy-voice.ts` (health check plus spawn-on-demand). Set `SKIPPY_HOME` to point the voice at another training checkout. A machine without that checkout and `.venv-serve` installed answers `missing-env`, read-aloud stays on the default engine, nothing else affected.
 
 ## What a persona changes
