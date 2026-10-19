@@ -6,7 +6,7 @@
  */
 
 import { applyPersona, chosenPersona } from "./persona";
-import { ensureSkippyVoice, voiceHealthy } from "./voice/skippy-voice";
+import { ensureSkippyVoice, stopSkippyVoice, voiceHealthy } from "./voice/skippy-voice";
 
 /** The part of prifly's `ExtensionApi` this uses (`@prifly/extension-api`). */
 type Api = {
@@ -32,10 +32,15 @@ export function voiceStatusText(voice: "alive" | "started" | "missing-env"): str
   }
 }
 
+/** Tracks the dropdown across apply() calls so a late status probe can't speak for a deselected Skippy. */
+let skippySelected = false;
+
 async function apply(api: Api, value: unknown): Promise<void> {
   const persona = await applyPersona(api.folder, value);
   api.log("persona", { persona });
-  if (chosenPersona(value) === "Skippy") {
+  const skippy = chosenPersona(value) === "Skippy";
+  skippySelected = skippy;
+  if (skippy) {
     const voice = await ensureSkippyVoice();
     api.log("skippy-voice", { voice });
     // Owner-slot by the platform hook: this extension's deactivate releases it.
@@ -43,24 +48,34 @@ async function apply(api: Api, value: unknown): Promise<void> {
     api.status?.(voiceStatusText(voice));
     if (voice === "started") {
       // One follow-up probe once the model has had its ~40 s to load, so the
-      // status line lands on running/failed — no recurring watcher.
+      // status line lands on running/failed — no recurring watcher. Dropped
+      // if Skippy was deselected meanwhile: the else branch owns the line then.
       setTimeout(() => {
+        if (!skippySelected) return;
         void voiceHealthy().then((up) => {
-          api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
+          if (skippySelected) {
+            api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
+          }
         });
       }, 60_000);
     }
   } else {
-    // Any other persona, or None: return speech to the default engine.
+    // Any other persona, or None: return speech to the default engine, and
+    // stop the voice server — its memory belongs to Skippy being selected.
     api.setSpeechBackend?.(null);
     api.status?.("");
+    const stopped = await stopSkippyVoice();
+    api.log("skippy-voice-stop", { stopped });
   }
 }
 
-export async function activate(api: Api): Promise<undefined> {
+export async function activate(api: Api): Promise<() => void> {
   await apply(api, api.settings?.["persona"]);
   api.onSettings?.((values) => {
     void apply(api, values["persona"]);
   });
-  return undefined;
+  // Extension unticked or reloaded: the voice server goes down with it.
+  return () => {
+    void stopSkippyVoice();
+  };
 }

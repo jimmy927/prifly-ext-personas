@@ -27,6 +27,8 @@ The same hook returns the slot to the default edge-tts engine the moment the cho
 
 While Skippy is picked, the extension's row in Settings → Extensions shows the voice server instead of the description: `Skippy voice: running`, `starting` (the first read-aloud takes ~40 s, checked once more a minute later), or `not installed`. Reloading or re-applying the extension re-probes the server and starts it again when it died — there is no background watcher; the status line reflects the last probe.
 
+The server's lifetime is the dropdown's: it starts when Skippy is picked and stops — its ~3 GB RAM and ~1 GB VRAM freed — the moment another persona or **None** is picked, or the extension is unticked or reloaded (a reload with Skippy picked therefore restarts the voice: ~40–70 s before the first read-aloud). No idle timers, no watcher processes; memory is held only while Skippy is selected.
+
 The private assets stay private in the training checkout (`skippy-voice.worktrees/pipeline-scaffold`: model weights 2.6 GB, voice checkpoints, and the training clips); only the glue ships in this repository — `voice/serve.py` (the FastAPI wrapper) and `voice/skippy-voice.ts` (health check plus spawn-on-demand). Set `SKIPPY_HOME` to point the voice at another training checkout. A machine without that checkout and `.venv-serve` installed answers `missing-env`, read-aloud stays on the default engine, nothing else affected.
 
 ## What a persona changes
