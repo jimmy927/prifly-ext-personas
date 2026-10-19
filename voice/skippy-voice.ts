@@ -1,19 +1,27 @@
 /**
- * The voice half of the Skippy bundle: the voice server's lifetime follows
- * the personas dropdown. Skippy picked: make sure the trained voice is
- * listening on 127.0.0.1:8911, starting it from SKIPPY_HOME if not. Any
- * other persona, or the extension stopping: the server stops too, so its
- * ~3 GB RAM and ~1 GB VRAM are only held while Skippy is selected.
+ * The voice half of the Skippy bundle: while the personas dropdown picks
+ * Skippy, the trained voice listens on 127.0.0.1:8911 — started from
+ * SKIPPY_HOME if not already up, and stopped again when Skippy is unselected,
+ * the extension stops or the host exits. The server holds ~4.7 GB RAM and
+ * 1.5-2 GB GPU, so it must never outlive the choice that wanted it.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 const HEALTH_URL = "http://127.0.0.1:8911/health";
+
+/** How long a SIGTERM'd server gets to free its GPU memory before SIGKILL. */
+const GRACE_MS = 5_000;
+
+/**
+ * The stop in flight, kept on globalThis: the host reloads an extension by
+ * importing it afresh and does not wait for the old stop function, so the new
+ * module's server finds the old one's shutdown here and waits for it.
+ */
+const STOPPING = Symbol.for("prifly-ext-personas.voice-stopping");
+const shared = globalThis as { [STOPPING]?: Promise<void> };
 
 /** Config the voice reads as well; the single point of truth for where the private assets live. */
 export function skippyHome(): string {
@@ -30,40 +38,151 @@ export async function voiceHealthy(): Promise<boolean> {
   }
 }
 
-/** One launch per extension lifetime: the GPU model takes ~40 s to load. */
-export function ensureVoiceServe(): Promise<"started"> {
-  const serve = spawn(
-    "nohup",
-    [
-      join(skippyHome(), ".venv-serve/bin/python"),
-      "-c",
-      "from skippy_voice.serve import run; run()",
-    ],
-    {
-      cwd: skippyHome(),
+export type VoiceOutcome = "alive" | "started" | "missing-env";
+
+/** The part of a `ChildProcess` the server uses. */
+export type VoiceChild = {
+  pid?: number;
+  once(event: "exit" | "error", handler: () => void): unknown;
+  unref(): void;
+};
+
+/** Everything that touches the machine, so a test swaps in stand-ins and no Python runs. */
+export type VoiceDeps = {
+  spawn(command: string, args: string[], cwd: string): VoiceChild;
+  /** Signals the whole process group of `pid`; a group that is already gone is fine. */
+  killGroup(pid: number, signal: "SIGTERM" | "SIGKILL"): void;
+  healthy(): Promise<boolean>;
+  /** Whether the venv and checkpoint under SKIPPY_HOME exist. */
+  installed(): boolean;
+  graceMs: number;
+};
+
+export const realDeps: VoiceDeps = {
+  spawn: (command, args, cwd) =>
+    spawn(command, args, {
+      cwd,
       env: { ...process.env, PYTHONPATH: "src" },
+      // Its own process group, so one signal reaches Python and anything it forks.
       detached: true,
       stdio: ["ignore", "ignore", "ignore"],
-    },
-  );
-  serve.unref();
-  return Promise.resolve("started");
-}
+    }),
+  killGroup: (pid, signal) => {
+    try {
+      process.kill(-pid, signal);
+    } catch (caught) {
+      if ((caught as NodeJS.ErrnoException).code !== "ESRCH") throw caught;
+    }
+  },
+  healthy: voiceHealthy,
+  installed: () =>
+    existsSync(join(skippyHome(), ".venv-serve", "bin", "python")) &&
+    existsSync(join(skippyHome(), "checkpoints-zh", "skippy_zh-e15.ckpt")),
+  graceMs: GRACE_MS,
+};
 
-export async function ensureSkippyVoice(): Promise<"alive" | "started" | "missing-env"> {
-  if (await voiceHealthy()) return "alive";
-  const venv = join(skippyHome(), ".venv-serve", "bin", "python");
-  const checkpoints = join(skippyHome(), "checkpoints-zh", "skippy_zh-e15.ckpt");
-  if (!existsSync(venv) || !existsSync(checkpoints)) return "missing-env";
-  return ensureVoiceServe();
-}
+/**
+ * The voice server as this extension owns it. Only a server it spawned itself
+ * is ever signalled: one that was already healthy on 8911 (started by hand or
+ * by someone else) is used but left alone, stop or not.
+ */
+export class VoiceServer {
+  private child: VoiceChild | null = null;
+  private pending: Promise<VoiceOutcome> | null = null;
+  private stopping: Promise<void> | null = null;
+  private readonly hooks: [NodeJS.Signals | "exit", () => void][] = [];
 
-/** Skippy deselected (or the extension stopping): the server's reason to exist is gone. */
-export async function stopSkippyVoice(): Promise<"stopped" | "not-running"> {
-  try {
-    await execFileAsync("pkill", ["-f", "skippy_voice\\.serve"]);
-    return "stopped";
-  } catch {
-    return "not-running";
+  constructor(private readonly deps: VoiceDeps = realDeps) {}
+
+  /** Make sure a voice is listening. Concurrent calls share one launch. */
+  ensure(): Promise<VoiceOutcome> {
+    this.pending ??= this.launch().finally(() => {
+      this.pending = null;
+    });
+    return this.pending;
+  }
+
+  private async launch(): Promise<VoiceOutcome> {
+    await this.stopping;
+    await shared[STOPPING];
+    if (this.child !== null) return (await this.deps.healthy()) ? "alive" : "started";
+    if (await this.deps.healthy()) return "alive";
+    if (!this.deps.installed()) return "missing-env";
+    const child = this.deps.spawn(
+      join(skippyHome(), ".venv-serve/bin/python"),
+      ["-c", "from skippy_voice.serve import run; run()"],
+      skippyHome(),
+    );
+    // Not holding the host's event loop open; the handle is kept to stop it.
+    child.unref();
+    this.child = child;
+    const gone = () => {
+      if (this.child === child) this.release();
+    };
+    child.once("exit", gone);
+    child.once("error", gone);
+    this.hookHostExit(child);
+    return "started";
+  }
+
+  /** Stop the server this extension started, if any: SIGTERM, then SIGKILL after the grace. */
+  stop(): Promise<void> {
+    this.stopping ??= this.halt().finally(() => {
+      this.stopping = null;
+      if (shared[STOPPING] === done) delete shared[STOPPING];
+    });
+    const done = this.stopping;
+    shared[STOPPING] = done;
+    return done;
+  }
+
+  private async halt(): Promise<void> {
+    // A launch in flight spawns first; stop what it makes.
+    await this.pending?.catch(() => undefined);
+    const child = this.child;
+    if (child === null || child.pid === undefined) return this.release();
+    const pid = child.pid;
+    const exited = new Promise<"exited">((resolve) => {
+      child.once("exit", () => resolve("exited"));
+    });
+    this.deps.killGroup(pid, "SIGTERM");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"late">((resolve) => {
+      timer = setTimeout(() => resolve("late"), this.deps.graceMs);
+    });
+    const outcome = await Promise.race([exited, late]);
+    clearTimeout(timer);
+    // Still up after the grace: SIGKILL, so the CUDA memory is freed.
+    if (outcome === "late") this.deps.killGroup(pid, "SIGKILL");
+    this.release();
+  }
+
+  private release(): void {
+    this.child = null;
+    for (const [event, handler] of this.hooks.splice(0)) process.off(event, handler);
+  }
+
+  /**
+   * The host does not call an extension's stop function when it exits (only on
+   * disable, unload and reload), so a host exit would orphan the server.
+   * "exit" allows only synchronous work: SIGTERM to the group, no grace. The
+   * signal hooks do the same, then hand the signal back to its default action
+   * when no other listener (the host's own) is left to handle it.
+   */
+  private hookHostExit(child: VoiceChild): void {
+    const onExit = () => {
+      if (this.child === child && child.pid !== undefined) this.deps.killGroup(child.pid, "SIGTERM");
+    };
+    this.hooks.push(["exit", onExit]);
+    process.on("exit", onExit);
+    for (const signal of ["SIGTERM", "SIGINT"] as const) {
+      const onSignal = () => {
+        onExit();
+        process.off(signal, onSignal);
+        if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+      };
+      this.hooks.push([signal, onSignal]);
+      process.on(signal, onSignal);
+    }
   }
 }

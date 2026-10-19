@@ -6,7 +6,7 @@
  */
 
 import { applyPersona, chosenPersona } from "./persona";
-import { ensureSkippyVoice, stopSkippyVoice, voiceHealthy } from "./voice/skippy-voice";
+import { VoiceServer, voiceHealthy } from "./voice/skippy-voice";
 
 /** The part of prifly's `ExtensionApi` this uses (`@prifly/extension-api`). */
 type Api = {
@@ -32,50 +32,53 @@ export function voiceStatusText(voice: "alive" | "started" | "missing-env"): str
   }
 }
 
-/** Tracks the dropdown across apply() calls so a late status probe can't speak for a deselected Skippy. */
-let skippySelected = false;
+/** The 60 s follow-up probe and the newest `apply`, per activation. */
+type State = { probe: ReturnType<typeof setTimeout> | undefined; latest: number };
 
-async function apply(api: Api, value: unknown): Promise<void> {
+async function apply(api: Api, server: VoiceServer, state: State, value: unknown): Promise<void> {
+  const mine = ++state.latest;
+  clearTimeout(state.probe);
   const persona = await applyPersona(api.folder, value);
   api.log("persona", { persona });
-  const skippy = chosenPersona(value) === "Skippy";
-  skippySelected = skippy;
-  if (skippy) {
-    const voice = await ensureSkippyVoice();
+  if (chosenPersona(value) === "Skippy") {
+    const voice = await server.ensure();
+    // A later pick, or the stop, took over while the server was being probed.
+    if (mine !== state.latest) return;
     api.log("skippy-voice", { voice });
     // Owner-slot by the platform hook: this extension's deactivate releases it.
     api.setSpeechBackend?.(voice === "missing-env" ? null : "http://127.0.0.1:8911");
     api.status?.(voiceStatusText(voice));
     if (voice === "started") {
       // One follow-up probe once the model has had its ~40 s to load, so the
-      // status line lands on running/failed — no recurring watcher. Dropped
-      // if Skippy was deselected meanwhile: the else branch owns the line then.
-      setTimeout(() => {
-        if (!skippySelected) return;
+      // status line lands on running/failed — no recurring watcher.
+      state.probe = setTimeout(() => {
         void voiceHealthy().then((up) => {
-          if (skippySelected) {
-            api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
-          }
+          api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
         });
       }, 60_000);
     }
   } else {
-    // Any other persona, or None: return speech to the default engine, and
-    // stop the voice server — its memory belongs to Skippy being selected.
+    // Any other persona, or None: return speech to the default engine and
+    // stop the voice server this extension started.
+    if (mine !== state.latest) return;
     api.setSpeechBackend?.(null);
     api.status?.("");
-    const stopped = await stopSkippyVoice();
-    api.log("skippy-voice-stop", { stopped });
+    await server.stop();
   }
 }
 
-export async function activate(api: Api): Promise<() => void> {
-  await apply(api, api.settings?.["persona"]);
+export async function activate(api: Api, server: VoiceServer = new VoiceServer()): Promise<() => Promise<void>> {
+  const state: State = { probe: undefined, latest: 0 };
+  await apply(api, server, state, api.settings?.["persona"]);
   api.onSettings?.((values) => {
-    void apply(api, values["persona"]);
+    void apply(api, server, state, values["persona"]);
   });
-  // Extension unticked or reloaded: the voice server goes down with it.
+  // Disable, unload and reload: the host calls this. It does not await the
+  // result (`runStop`), so the next activation waits for the stop itself
+  // (`voice/skippy-voice.ts`); callers that do await get the finished stop.
   return () => {
-    void stopSkippyVoice();
+    state.latest++;
+    clearTimeout(state.probe);
+    return server.stop();
   };
 }
