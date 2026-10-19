@@ -6,7 +6,7 @@
  */
 
 import { applyPersona, chosenPersona } from "./persona";
-import { ensureSkippyVoice, voiceHealthy } from "./voice/skippy-voice";
+import { VoiceServer, voiceHealthy } from "./voice/skippy-voice";
 
 /** The part of prifly's `ExtensionApi` this uses (`@prifly/extension-api`). */
 type Api = {
@@ -32,11 +32,18 @@ export function voiceStatusText(voice: "alive" | "started" | "missing-env"): str
   }
 }
 
-async function apply(api: Api, value: unknown): Promise<void> {
+/** The 60 s follow-up probe and the newest `apply`, per activation. */
+type State = { probe: ReturnType<typeof setTimeout> | undefined; latest: number };
+
+async function apply(api: Api, server: VoiceServer, state: State, value: unknown): Promise<void> {
+  const mine = ++state.latest;
+  clearTimeout(state.probe);
   const persona = await applyPersona(api.folder, value);
   api.log("persona", { persona });
   if (chosenPersona(value) === "Skippy") {
-    const voice = await ensureSkippyVoice();
+    const voice = await server.ensure();
+    // A later pick, or the stop, took over while the server was being probed.
+    if (mine !== state.latest) return;
     api.log("skippy-voice", { voice });
     // Owner-slot by the platform hook: this extension's deactivate releases it.
     api.setSpeechBackend?.(voice === "missing-env" ? null : "http://127.0.0.1:8911");
@@ -44,23 +51,31 @@ async function apply(api: Api, value: unknown): Promise<void> {
     if (voice === "started") {
       // One follow-up probe once the model has had its ~40 s to load, so the
       // status line lands on running/failed — no recurring watcher.
-      setTimeout(() => {
+      state.probe = setTimeout(() => {
         void voiceHealthy().then((up) => {
           api.status?.(up ? voiceStatusText("alive") : "Skippy voice: failed to start — see the serve log");
         });
       }, 60_000);
     }
   } else {
-    // Any other persona, or None: return speech to the default engine.
+    // Any other persona, or None: return speech to the default engine and
+    // stop the voice server this extension started.
     api.setSpeechBackend?.(null);
     api.status?.("");
+    await server.stop();
   }
 }
 
-export async function activate(api: Api): Promise<undefined> {
-  await apply(api, api.settings?.["persona"]);
+export async function activate(api: Api, server: VoiceServer = new VoiceServer()): Promise<() => void> {
+  const state: State = { probe: undefined, latest: 0 };
+  await apply(api, server, state, api.settings?.["persona"]);
   api.onSettings?.((values) => {
-    void apply(api, values["persona"]);
+    void apply(api, server, state, values["persona"]);
   });
-  return undefined;
+  // Disable, unload and reload: the host calls this.
+  return () => {
+    state.latest++;
+    clearTimeout(state.probe);
+    void server.stop();
+  };
 }
