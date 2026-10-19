@@ -15,6 +15,14 @@ const HEALTH_URL = "http://127.0.0.1:8911/health";
 /** How long a SIGTERM'd server gets to free its GPU memory before SIGKILL. */
 const GRACE_MS = 5_000;
 
+/**
+ * The stop in flight, kept on globalThis: the host reloads an extension by
+ * importing it afresh and does not wait for the old stop function, so the new
+ * module's server finds the old one's shutdown here and waits for it.
+ */
+const STOPPING = Symbol.for("prifly-ext-personas.voice-stopping");
+const shared = globalThis as { [STOPPING]?: Promise<void> };
+
 /** Config the voice reads as well; the single point of truth for where the private assets live. */
 export function skippyHome(): string {
   return process.env.SKIPPY_HOME ?? join(process.env.HOME ?? "/home/jimmy", "src/skippy-voice.worktrees/pipeline-scaffold");
@@ -96,6 +104,7 @@ export class VoiceServer {
 
   private async launch(): Promise<VoiceOutcome> {
     await this.stopping;
+    await shared[STOPPING];
     if (this.child !== null) return (await this.deps.healthy()) ? "alive" : "started";
     if (await this.deps.healthy()) return "alive";
     if (!this.deps.installed()) return "missing-env";
@@ -120,8 +129,11 @@ export class VoiceServer {
   stop(): Promise<void> {
     this.stopping ??= this.halt().finally(() => {
       this.stopping = null;
+      if (shared[STOPPING] === done) delete shared[STOPPING];
     });
-    return this.stopping;
+    const done = this.stopping;
+    shared[STOPPING] = done;
+    return done;
   }
 
   private async halt(): Promise<void> {

@@ -60,22 +60,25 @@ async function apply(api: Api, server: VoiceServer, state: State, value: unknown
   } else {
     // Any other persona, or None: return speech to the default engine and
     // stop the voice server this extension started.
+    if (mine !== state.latest) return;
     api.setSpeechBackend?.(null);
     api.status?.("");
     await server.stop();
   }
 }
 
-export async function activate(api: Api, server: VoiceServer = new VoiceServer()): Promise<() => void> {
+export async function activate(api: Api, server: VoiceServer = new VoiceServer()): Promise<() => Promise<void>> {
   const state: State = { probe: undefined, latest: 0 };
   await apply(api, server, state, api.settings?.["persona"]);
   api.onSettings?.((values) => {
     void apply(api, server, state, values["persona"]);
   });
-  // Disable, unload and reload: the host calls this.
+  // Disable, unload and reload: the host calls this. It does not await the
+  // result (`runStop`), so the next activation waits for the stop itself
+  // (`voice/skippy-voice.ts`); callers that do await get the finished stop.
   return () => {
     state.latest++;
     clearTimeout(state.probe);
-    void server.stop();
+    return server.stop();
   };
 }
