@@ -16,20 +16,9 @@ Each persona is a Claude Code [output style](https://code.claude.com/docs/en/out
 
 `research/` holds the source notes each persona was written from: speech patterns, canon checks and short attributed quotes. It is not loaded into any session.
 
-## The Skippy bundle: talk and voice
+## Skippy's voice
 
-Skippy is not only a style sheet. When the dropdown picks **Skippy**, the plugin:
-
-1. makes sure the trained voice — skippy_zh-e15, built from the reader's own book audio and approved by ear — is listening at `127.0.0.1:8911`, starting it from `SKIPPY_HOME` if it is not;
-2. points prifly's read-aloud at it through the platform's `setSpeechBackend` hook (needs prifly on or after `e1186aca`; older priflys silently keep the default engine, since the plugin feature-guards the call).
-
-The same hook returns the slot to the default edge-tts engine the moment the choice becomes another persona, **None**, or the extension is unloaded — because the slot belongs to this extension and the platform resets it on deactivate. No env var, no config file, no restart.
-
-While Skippy is picked, the extension's row in Settings → Extensions shows the voice server instead of the description: `Skippy voice: running`, `starting` (the first read-aloud takes ~40 s, checked once more a minute later), or `not installed`. Reloading or re-applying the extension re-probes the server and starts it again when it died — there is no background watcher; the status line reflects the last probe.
-
-The server's lifetime is the dropdown's: it starts when Skippy is picked and stops — its ~3 GB RAM and ~1 GB VRAM freed — the moment another persona or **None** is picked, or the extension is unticked or reloaded (a reload with Skippy picked therefore restarts the voice: ~40–70 s before the first read-aloud). No idle timers, no watcher processes; memory is held only while Skippy is selected.
-
-The private assets stay private in the training checkout (`skippy-voice.worktrees/pipeline-scaffold`: model weights 2.6 GB, voice checkpoints, and the training clips); only the glue ships in this repository — `voice/serve.py` (the FastAPI wrapper) and `voice/skippy-voice.ts` (health check plus spawn-on-demand). Set `SKIPPY_HOME` to point the voice at another training checkout. A machine without that checkout and `.venv-serve` installed answers `missing-env`, read-aloud stays on the default engine, nothing else affected.
+Skippy's read-aloud voice is no longer part of this extension: it is its own extension, Skippy Voice (https://github.com/jimmy927/prifly-ext-skippy-voice), enabled independently of the persona. Personas only changes how Claude talks to you.
 
 ## What a persona changes
 

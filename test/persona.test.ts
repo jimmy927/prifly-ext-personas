@@ -3,7 +3,6 @@ import { cp, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PERSONAS, applyPersona, chosenPersona, forcedStyle } from "../persona";
-import { voiceStatusText } from "../index";
 
 const repo = join(import.meta.dir, "..");
 
@@ -13,12 +12,6 @@ test("only an offered persona is chosen; None and unknown values are none", () =
   expect(chosenPersona("None")).toBeNull();
   expect(chosenPersona("skippy")).toBeNull();
   expect(chosenPersona(undefined)).toBeNull();
-});
-
-test("the voice status line names each ensure outcome", () => {
-  expect(voiceStatusText("alive")).toBe("Skippy voice: running");
-  expect(voiceStatusText("started")).toContain("starting");
-  expect(voiceStatusText("missing-env")).toContain("not installed");
 });
 
 test("the forced style keeps the persona's front matter and adds force-for-plugin", () => {

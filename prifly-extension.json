@@ -1,8 +1,8 @@
 {
   "id": "personas",
   "name": "Personas",
-  "description": "A voice to talk to you in, so the day is less dull: Skippy the Magnificent, Spock, Duke Nukem, Bender, Captain Jack Sparrow, Deadpool, the Cat from Red Dwarf, Zapp Brannigan or Claptrap. Pick one under Persona; new sessions talk in it, and Apply to idle sessions hands it to the ones running. Only how Claude talks to you changes: commits, code and drafts for others stay plain. Skippy also carries his voice: audited against the reader's own ear, rendered locally from the private model.",
-  "version": "0.2.4",
+  "description": "A voice to talk to you in, so the day is less dull: Skippy the Magnificent, Spock, Duke Nukem, Bender, Captain Jack Sparrow, Deadpool, the Cat from Red Dwarf, Zapp Brannigan or Claptrap. Pick one under Persona; new sessions talk in it, and Apply to idle sessions hands it to the ones running. Only how Claude talks to you changes: commits, code and drafts for others stay plain.",
+  "version": "0.3.0",
   "main": "index.ts",
   "settings": [
     {
